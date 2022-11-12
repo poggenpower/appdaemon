@@ -8,14 +8,21 @@ if [ ! -f $CONF/appdaemon.yaml ]; then
   cp $CONF_SRC/appdaemon.yaml.example $CONF/appdaemon.yaml
 fi
 
-# if apps folder doesn't exist, copy the default
-if [ ! -d $CONF/apps ]; then
-  cp -r $CONF_SRC/apps $CONF/apps
+# Allow to overwirte appdir by env APPDIR
+if [ -n "$APPDIR" ]; then
+  sed -i "s/^  app_dir:.*/  app_dir: $APPDIR/" $CONF/appdaemon.yaml
+else
+  APPDIR="${CONF}/apps"
 fi
 
-# if apps file doesn't exist, copy the default
-if [ ! -f $CONF/apps/apps.yaml ]; then
-  cp $CONF_SRC/apps/apps.yaml.example $CONF/apps/apps.yaml
+# if apps folder doesn't exist, copy the default
+if [ ! -d "${APPDIR}" ]; then
+  cp -r $CONF_SRC/apps "${APPDIR}"
+fi
+
+# copy example app if no "apps.yaml" exist, but skip it if env "NO_EXAMPLE_APPS" is set
+if [ ! -f "${APPDIR}/apps.yaml" ] && [ "${NO_EXAMPLE_APPS}unset" == "unset" ]; then
+  cp $CONF_SRC/apps/apps.yaml.example "${APPDIR}/apps.yaml"
 fi
 
 # if dashboards folder doesn't exist, copy the default
@@ -81,8 +88,9 @@ fi
 
 #install user-specific packages
 apk add --no-cache $(find $CONF -name system_packages.txt | xargs cat | tr '\n' ' ')
-#check recursively under CONF for additional python dependencies defined in requirements.txt
+#check recursively under CONF and APPDIR for additional python dependencies defined in requirements.txt
 find $CONF -name requirements.txt -exec pip3 install --upgrade -r {} \;
+find $APPDIR -name requirements.txt -exec pip3 install --upgrade -r {} \;
 
 # Lets run it!
 exec appdaemon -c $CONF "$@"
