@@ -8,22 +8,32 @@ if [ ! -f $CONF/appdaemon.yaml ]; then
   cp $CONF_SRC/appdaemon.yaml.example $CONF/appdaemon.yaml
 fi
 
-# Allow to overwirte appdir by env APPDIR
-if [ -n "$APPDIR" ]; then
-  sed -i "s/^  app_dir:.*/  app_dir: $APPDIR/" $CONF/appdaemon.yaml
-else
-  APPDIR="${CONF}/apps"
-fi
+# get app_dir from config, else use default
+APPDIR=$(cat $CONF/appdaemon.yaml | sed -n 's/\s*app_dir:\s*\(.*\)$/\1/p')
+case "${APPDIR}" in
+  !env_var*) # add_dir pointing to env 
+    APPDIR_ENV=$(echo "$APPDIR" | sed -n 's/!env_var\s*\(.*\)/\1/p')
+    echo "read app_dir from env ${APPDIR_ENV}"
+    APPDIR=$(printenv "${APPDIR_ENV}")
+    echo "app_dir set via env to: ${APPDIR}"
+    ;;
+  "") # set default if not configured. 
+    APPDIR="${CONF}/apps"
+    echo "use default app_dir: ${APPDIR}"
+    ;;
+  *) 
+    echo "app_dir configured as ${APPDIR}"
+esac
 
 # if apps folder doesn't exist, copy the default
 if [ ! -d "${APPDIR}" ]; then
   cp -r $CONF_SRC/apps "${APPDIR}"
+  # if apps file doesn't exist, copy the default
+  if [ ! -f "${APPDIR}/apps.yaml" ]; then
+    cp $CONF_SRC/apps/apps.yaml.example "${APPDIR}/apps.yaml"
+  fi
 fi
 
-# copy example app if no "apps.yaml" exist, but skip it if env "NO_EXAMPLE_APPS" is set
-if [ ! -f "${APPDIR}/apps.yaml" ] && [ "${NO_EXAMPLE_APPS}unset" == "unset" ]; then
-  cp $CONF_SRC/apps/apps.yaml.example "${APPDIR}/apps.yaml"
-fi
 
 # if dashboards folder doesn't exist, copy the default
 if [ ! -d $CONF/dashboards ]; then
@@ -91,6 +101,10 @@ apk add --no-cache $(find $CONF -name system_packages.txt | xargs cat | tr '\n' 
 #check recursively under CONF and APPDIR for additional python dependencies defined in requirements.txt
 find $CONF -name requirements.txt -exec pip3 install --upgrade -r {} \;
 find $APPDIR -name requirements.txt -exec pip3 install --upgrade -r {} \;
+
+echo "Starting appdaemon with following config:"
+cat $CONF/appdaemon.yaml
+echo "################################"
 
 # Lets run it!
 exec appdaemon -c $CONF "$@"
